@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mustafaautomation/n8n-workflows-tested/schema/workflow.schema.json",
+  "title": "n8n workflow export (the subset this repo relies on)",
+  "type": "object",
+  "required": ["id", "name", "nodes", "connections", "settings"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9]{16}$" },
+    "name": { "type": "string", "minLength": 3, "maxLength": 128 },
+    "active": { "const": false },
+    "nodes": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type", "typeVersion", "position", "parameters"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "pattern": "^n8n-nodes-base\\.[A-Za-z]+$" },
+          "typeVersion": { "type": "number" },
+          "position": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+          "parameters": { "type": "object" },
+          "webhookId": { "type": "string", "format": "uuid" },
+          "onError": { "enum": ["stopWorkflow", "continueRegularOutput", "continueErrorOutput"] },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "connections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["main"],
+        "additionalProperties": false,
+        "properties": {
+          "main": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["node", "type", "index"],
+                "additionalProperties": false,
+                "properties": {
+                  "node": { "type": "string" },
+                  "type": { "const": "main" },
+                  "index": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "required": ["executionOrder"],
+      "properties": { "executionOrder": { "const": "v1" } }
+    },
+    "pinData": { "type": "object", "maxProperties": 0 },
+    "meta": {
+      "type": "object",
+      "required": ["description"],
+      "properties": { "description": { "type": "string", "minLength": 20 } }
+    }
+  }
+}

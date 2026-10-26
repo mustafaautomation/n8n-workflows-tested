@@ -1,0 +1,303 @@
+{
+  "id": "apiHealthCheck01",
+  "name": "Scheduled API health check",
+  "active": false,
+  "nodes": [
+    {
+      "id": "8c45ebd5-22fd-58ef-b2a9-83e4f411a36f",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 200],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cd6781f6-9ea0-5d33-92f3-a5375097df1c",
+      "name": "Run now (webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 400],
+      "webhookId": "c4b9e0d1-3f2a-4c6b-8e7d-1a2b3c4d5e33",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "health-check",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "b8b367c7-429c-561c-91b4-7cb4193633f2",
+      "name": "Load targets",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "t1",
+              "name": "targets",
+              "value": "={{ $env.HEALTH_TARGETS }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "af055f68-bd66-5e6f-8870-46a2188140c7",
+      "name": "Split targets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "parameters": {
+        "jsCode": "const raw = String($json.targets ?? '');\nconst urls = raw.split(',').map((s) => s.trim()).filter(Boolean);\nif (urls.length === 0) throw new Error('HEALTH_TARGETS is empty');\nreturn urls.map((url) => ({ json: { url } }));"
+      }
+    },
+    {
+      "id": "45bc64e9-be93-5f25-b0ee-5e087e141362",
+      "name": "Check endpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300],
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 5000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ba783675-c909-5fdb-85a1-2db558b8216f",
+      "name": "Summarise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "parameters": {
+        "jsCode": "const results = $input.all().map((item, i) => {\n  const target = $('Split targets').all()[i]?.json.url ?? 'unknown';\n  const status = item.json.statusCode ?? null;\n  const ok = typeof status === 'number' && status >= 200 && status < 300;\n  return { url: target, status, ok, error: ok ? null : (item.json.error?.message ?? (status ? `HTTP ${status}` : 'no response')) };\n});\nconst down = results.filter((r) => !r.ok);\nreturn [{ json: { checked: results.length, healthy: results.length - down.length, down, results } }];"
+      }
+    },
+    {
+      "id": "4a620895-d9f6-59b7-9c14-ab4cae6bffd1",
+      "name": "Anything down?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1100, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.down.length }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "rightValue": 0
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f9c21d18-c0cb-5bb5-b7fe-c3b84d7190b6",
+      "name": "Alert Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: \":warning: Health check: \" + $json.down.length + \" of \" + $json.checked + \" endpoints failing\", blocks: [ { type: \"section\", text: { type: \"mrkdwn\", text: $json.down.map(d => \"• \" + d.url + \" — \" + d.error).join(\"\\n\") } } ] }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "2fe2fe21-a93f-5858-b1f5-5d3c8f49fab1",
+      "name": "Result: alerted",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1540, 200],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "alerted",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "r2",
+              "name": "summary",
+              "value": "={{ $('Summarise').item.json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "526f1f6c-758c-501f-b03a-52c6671f1764",
+      "name": "Result: all healthy",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1320, 420],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r3",
+              "name": "alerted",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "r4",
+              "name": "summary",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Load targets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (webhook)": {
+      "main": [
+        [
+          {
+            "node": "Load targets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load targets": {
+      "main": [
+        [
+          {
+            "node": "Split targets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split targets": {
+      "main": [
+        [
+          {
+            "node": "Check endpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check endpoint": {
+      "main": [
+        [
+          {
+            "node": "Summarise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarise": {
+      "main": [
+        [
+          {
+            "node": "Anything down?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything down?": {
+      "main": [
+        [
+          {
+            "node": "Alert Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Result: all healthy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Slack": {
+      "main": [
+        [
+          {
+            "node": "Result: alerted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "description": "Every 5 minutes (or GET /webhook/health-check) checks each URL in HEALTH_TARGETS and posts one Slack alert listing the failing endpoints."
+  }
+}

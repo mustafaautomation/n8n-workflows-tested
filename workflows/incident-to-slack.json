@@ -1,0 +1,227 @@
+{
+  "id": "incidentToSlack1",
+  "name": "Incident webhook to Slack notification",
+  "active": false,
+  "nodes": [
+    {
+      "id": "ae3c7652-0876-5ef2-8708-3b2d0d330193",
+      "name": "Incident webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "5d6f6a3e-6a8a-4f43-9d0c-2a6b0b1e7a11",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "fd318841-198a-5634-9437-87d0df64e658",
+      "name": "Has title and severity?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [220, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json.body.title }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "v2",
+              "leftValue": "={{ $json.body.severity }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f1a38877-88cc-58c8-a223-83dbf9ea7217",
+      "name": "Reject: 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false, \"error\": \"title and severity are required\" } }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "9f67f57a-5769-5ef1-8b7f-13ab8d927a24",
+      "name": "Severity high or critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s1",
+              "leftValue": "={{ $json.body.severity.toLowerCase() }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "critical"
+            },
+            {
+              "id": "s2",
+              "leftValue": "={{ $json.body.severity.toLowerCase() }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "high"
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3102a300-af8e-59d4-b64d-8b065b69a8ad",
+      "name": "Post to Slack webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 100],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: \":rotating_light: [\" + $('Incident webhook').item.json.body.severity.toUpperCase() + \"] \" + $('Incident webhook').item.json.body.title, blocks: [ { type: \"section\", text: { type: \"mrkdwn\", text: \"*\" + $('Incident webhook').item.json.body.title + \"*\\nService: \" + ($('Incident webhook').item.json.body.service || \"unknown\") + \"\\nSeverity: \" + $('Incident webhook').item.json.body.severity } } ] }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "27caba8b-755c-510c-9f8d-c3c3f45e16f3",
+      "name": "Accepted: notified",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 100],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"notified\": true } }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "7f18c90e-4ab5-5c3d-9cb0-396fae16ee79",
+      "name": "Accepted: below threshold",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"notified\": false, \"reason\": \"severity below high\" } }}",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Incident webhook": {
+      "main": [
+        [
+          {
+            "node": "Has title and severity?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has title and severity?": {
+      "main": [
+        [
+          {
+            "node": "Severity high or critical?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject: 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Severity high or critical?": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Accepted: below threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack webhook": {
+      "main": [
+        [
+          {
+            "node": "Accepted: notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "description": "POST /webhook/incident {title, severity, service}. High and critical incidents are posted to a Slack incoming-webhook URL; others are acknowledged without a notification."
+  }
+}

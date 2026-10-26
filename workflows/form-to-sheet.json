@@ -1,0 +1,214 @@
+{
+  "id": "formToSheet00001",
+  "name": "Form submission to spreadsheet row",
+  "active": false,
+  "nodes": [
+    {
+      "id": "1b5476e1-0639-5b1a-9396-37088ef1a498",
+      "name": "Form submission",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "8a3c1f52-2b4e-4b1a-9f6d-7c2e5d9a0b22",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "signup",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "2cc025ff-47ed-50c1-bff8-21cf5e5fe7d1",
+      "name": "Normalise fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "name",
+              "value": "={{ String($json.body.name ?? '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "email",
+              "value": "={{ String($json.body.email ?? '').trim().toLowerCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "plan",
+              "value": "={{ String($json.body.plan ?? 'free').trim().toLowerCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "submitted_at",
+              "value": "={{ $now.toUTC().toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a0d47890-8b39-5be2-b426-15d217c00ddf",
+      "name": "Valid name and email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1",
+              "leftValue": "={{ $json.name }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "e2",
+              "leftValue": "={{ $json.email }}",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              },
+              "rightValue": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+            },
+            {
+              "id": "e3",
+              "leftValue": "={{ ['free', 'pro', 'team'].includes($json.plan) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "632e307b-9222-5dcd-a313-885e6d08a391",
+      "name": "Append row to sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SHEETS_API_BASE }}/v4/spreadsheets/{{ $env.SHEET_ID }}/values/Signups!A:D:append?valueInputOption=RAW",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ values: [[ $json.submitted_at, $json.name, $json.email, $json.plan ]] }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "58e6182a-d30f-5cf9-9a8d-f175387a6b8b",
+      "name": "Stored: 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 200],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"stored\": true, \"updatedRange\": $json.updates.updatedRange } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "32ea99fa-8efe-59a8-8075-5d6286c34b9d",
+      "name": "Invalid: 422",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false, \"error\": \"name, a valid email and a plan of free, pro or team are required\" } }}",
+        "options": {
+          "responseCode": 422
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Form submission": {
+      "main": [
+        [
+          {
+            "node": "Normalise fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise fields": {
+      "main": [
+        [
+          {
+            "node": "Valid name and email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid name and email?": {
+      "main": [
+        [
+          {
+            "node": "Append row to sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid: 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row to sheet": {
+      "main": [
+        [
+          {
+            "node": "Stored: 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "meta": {
+    "description": "POST /webhook/signup (JSON or form-encoded) {name, email, plan}. Valid submissions are appended as a row through the Google Sheets values:append API shape; invalid ones get 422."
+  }
+}

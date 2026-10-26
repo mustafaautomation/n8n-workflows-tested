@@ -1,0 +1,22 @@
+{
+  "name": "n8n-workflows-tested",
+  "private": true,
+  "type": "module",
+  "description": "n8n workflows as JSON with schema/lint validation and end-to-end tests against n8n in Docker",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint:workflows": "node scripts/lint-workflows.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.mjs\"",
+    "mock": "node mock/server.mjs",
+    "format:check": "prettier --check \"**/*.{mjs,json,md,yml}\""
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "prettier": "^3.9.10"
+  }
+}
